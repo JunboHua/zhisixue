@@ -80,34 +80,22 @@ const MAX_LOOP_ITERATIONS = 10;
 
 // 检测是否使用 Mock 模式（API Key 未配置或为占位符）
 const apiKey = process.env.DEEPSEEK_API_KEY;
-const useMock = !apiKey || apiKey === 'your_deepseek_api_key_here' || apiKey.includes('****');
+let useMock = !apiKey || apiKey === 'your_deepseek_api_key_here' || apiKey.includes('****');
 
-// Mock 问题列表（用于无 API Key 时的演示）
-const MOCK_QUESTIONS = [
-  '如果你要向一个完全没学过数学的人解释"函数"是什么，你会怎么用生活中的例子来说明？',
-  '假设我们有一个函数 f(x)=2x+1，当 x 从 1 增加到 3 时，f(x) 会如何变化？这个过程告诉了你关于这个函数的什么信息？',
-  '你提到了一个很好的观点！那么你能想出一个场景，其中输入和输出之间的关系不是函数关系吗？为什么？',
-  '如果把函数的定义域从实数缩小到整数，这对函数图像会产生什么影响？你觉得为什么会这样？',
-  '恭喜你完成了这个知识点的学习！你对函数的理解越来越深入了。现在，回顾一下我们讨论的内容，你觉得函数的哪三个性质最重要？'
-];
+// Mock 回复生成（基于知识点动态生成，不再硬编码话题）
+function getMockQuestion(knowledgePoint) {
+  const kp = knowledgePoint || '当前知识点';
+  return `请思考：能否用自己的话解释「${kp}」的核心概念？试着举一个生活中的例子来说明。`;
+}
 
-const MOCK_HINT = '试着从「每个输入是否都有唯一的输出」这个角度思考。如果某个输入可以对应两个不同的输出，那它还满足函数的定义吗？';
-
-let mockQuestionIndex = 0;
-
-function getMockReply(userMessage) {
-  if (mockQuestionIndex >= MOCK_QUESTIONS.length) {
-    return {
-      reply: MOCK_QUESTIONS[MOCK_QUESTIONS.length - 1],
-      isCompleted: true
-    };
+function extractKnowledgePoint(messages) {
+  for (const m of messages) {
+    if (m.role === 'system' && m.content) {
+      const match = m.content.match(/教学知识点[：:]\s*(.+)/);
+      if (match) return match[1];
+    }
   }
-  const reply = MOCK_QUESTIONS[mockQuestionIndex];
-  mockQuestionIndex++;
-  return {
-    reply,
-    isCompleted: mockQuestionIndex >= MOCK_QUESTIONS.length
-  };
+  return '';
 }
 
 /**
@@ -167,7 +155,7 @@ async function callLLM(messages) {
       };
     }
 
-    return { role: 'assistant', content: MOCK_QUESTIONS[0] };
+    return { role: 'assistant', content: getMockQuestion(extractKnowledgePoint(messages)) };
   }
 
   // 真实 API 调用...
@@ -198,7 +186,12 @@ async function callLLM(messages) {
   } catch (error) {
     const status = error.response?.status;
     const errMsg = error.response?.data || error.message;
-    console.error(`Agent LLM 调用失败 (HTTP ${status}):`, JSON.stringify(errMsg).substring(0, 200));
+    console.error(`Agent LLM 调用失败 (HTTP ${status}):`, JSON.stringify(errMsg).substring(0, 500));
+    // 失败后切换到 Mock 模式避免连续报错
+    if (!useMock) {
+      useMock = true;
+      console.log('[Agent] 已切换到 Mock 模式，后续请求将使用模拟响应');
+    }
 
     // 认证失败或服务端错误 → 回退到 Mock 模式
     if (status === 401 || status === 403) {
@@ -223,7 +216,7 @@ async function callLLM(messages) {
           }]
         };
       }
-      return { role: 'assistant', content: MOCK_QUESTIONS[0] };
+      return { role: 'assistant', content: getMockQuestion(extractKnowledgePoint(messages)) };
     }
 
     // 其他API错误（400, 500等）→ 尝试不带tools的重试
@@ -237,7 +230,7 @@ async function callLLM(messages) {
         return fallbackResponse.data.choices[0].message;
       } catch (fbError) {
         console.error('[Agent] 回退调用也失败，使用 Mock:', fbError.message);
-        return { role: 'assistant', content: MOCK_QUESTIONS[0] };
+        return { role: 'assistant', content: getMockQuestion(extractKnowledgePoint(messages)) };
       }
     }
 
