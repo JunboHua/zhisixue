@@ -59,12 +59,19 @@ const PROMPT_TEMPLATES = {
 /**
  * 根据知识点和难度生成苏格拉底式提问
  */
-async function askQuestion({ knowledgePoint, difficulty, focusArea }) {
+async function askQuestion({ knowledgePoint, difficulty, focusArea, previousQuestions }) {
   const template = PROMPT_TEMPLATES[difficulty] || PROMPT_TEMPLATES['中等'];
 
-  const prompt = template
+  let prompt = template
     .replace('{knowledgePoint}', knowledgePoint)
     .replace('{description}', focusArea || '');
+
+  // 如果有历史问题，追加去重指令
+  if (previousQuestions && previousQuestions.length > 0) {
+    prompt += `\n\n⚠️ 以下问题已经问过了，新问题必须完全不同:\n`;
+    previousQuestions.forEach((q, i) => { prompt += `${i + 1}. "${q}"\n`; });
+    prompt += `\n请生成一个与以上所有问题角度、场景、深度都不同的新问题。`;
+  }
 
   const result = await aiService.callAI(prompt);
 
