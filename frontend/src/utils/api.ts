@@ -169,6 +169,14 @@ export const learningApi = {
     request('/learning/answer', 'POST', data),
   
   sessions: () => request('/learning/sessions', 'GET'),
-  
+
   session: (id: string) => request(`/learning/session/${id}`, 'GET')
+}
+
+export const agentApi = {
+  start: (data: { resourceId: string; knowledgePointId: string; knowledgePointTitle: string }) =>
+    request('/agent/start', 'POST', data),
+
+  chat: (data: { sessionId: string; message: string }) =>
+    request('/agent/chat', 'POST', data)
 }
