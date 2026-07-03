@@ -78,7 +78,7 @@ async function updateUser(userId, updateData) {
   if (!id) return null;
 
   updateData.updatedAt = new Date();
-  return User.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+  return User.findByIdAndUpdate(id, { $set: updateData }, { returnDocument: 'after' });
 }
 
 // ========== Resource CRUD ==========
@@ -111,7 +111,7 @@ async function updateResource(id, updateData) {
   if (!connected) return MemoryStore.updateResource(id, updateData);
 
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
-  return Resource.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+  return Resource.findByIdAndUpdate(id, { $set: updateData }, { returnDocument: 'after' });
 }
 
 async function deleteResource(id) {
@@ -151,7 +151,7 @@ async function updateSession(id, updateData) {
   if (!connected) return MemoryStore.updateSession(id, updateData);
 
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
-  return LearningSession.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+  return LearningSession.findByIdAndUpdate(id, { $set: updateData }, { returnDocument: 'after' });
 }
 
 module.exports = {
