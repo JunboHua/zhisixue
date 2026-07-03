@@ -21,7 +21,7 @@ app.use('/api/learning', require('./routes/learning'));
 app.use('/api/agent', require('./routes/agent'));
 
 app.get('/', (req, res) => {
-  res.send('智思学 AI 苏格拉底学习助手 - 后端服务');
+  res.send('问乎 AI 苏格拉底学习助手 - 后端服务');
 });
 
 // 连接数据库后启动服务

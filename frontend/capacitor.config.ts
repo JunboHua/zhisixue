@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.zhisixue.app',
-  appName: '智思学',
+  appName: '问乎',
   webDir: 'dist/build/h5'
 };
 

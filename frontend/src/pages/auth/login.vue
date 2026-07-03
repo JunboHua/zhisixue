@@ -3,8 +3,8 @@
     <view class="login-card">
       <view class="logo-section">
         <view class="logo-icon">智</view>
-        <text class="app-title">智思学</text>
-        <text class="app-subtitle">AI苏格拉底式学习助手</text>
+        <text class="app-title">问乎</text>
+        <text class="app-subtitle">AI 启发式问答</text>
       </view>
 
       <view class="form-section">

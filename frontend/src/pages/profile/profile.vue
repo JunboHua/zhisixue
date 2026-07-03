@@ -129,8 +129,8 @@ function goToSettings() {
 
 function showAbout() {
   uni.showModal({
-    title: '关于智思学',
-    content: '智思学是一款基于苏格拉底式教学法的AI学习助手，通过启发式提问引导用户自主思考，构建知识体系。',
+    title: '关于问乎',
+    content: '问乎是一款基于苏格拉底式教学法的AI学习助手，通过启发式提问引导用户自主思考，构建知识体系。',
     showCancel: false
   })
 }

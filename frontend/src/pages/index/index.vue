@@ -4,8 +4,8 @@
       <view class="logo">
         <view class="logo-icon">智</view>
         <view class="logo-text">
-          <text class="app-name">智思学</text>
-          <text class="app-slogan">AI苏格拉底式学习助手</text>
+          <text class="app-name">问乎</text>
+          <text class="app-slogan">AI 启发式问答</text>
         </view>
       </view>
     </view>

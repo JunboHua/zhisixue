@@ -1,12 +1,12 @@
 {
-  "name": "智思学",
+  "name": "问乎",
   "appid": "__UNI__ZHISIXUE",
-  "description": "AI苏格拉底式反向提问学习助手",
+  "description": "AI 启发式问答 — 问乎",
   "versionName": "1.0.0",
   "versionCode": "100",
   "transformPx": false,
   "h5": {
-    "title": "智思学 - AI学习助手",
+    "title": "问乎 - AI 启发式问答",
     "router": {
       "mode": "hash",
       "base": "./"

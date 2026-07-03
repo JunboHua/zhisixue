@@ -1,7 +1,7 @@
 {
   "name": "zhisixue-frontend",
   "version": "1.0.0",
-  "description": "智思学 AI 苏格拉底学习助手前端",
+  "description": "问乎 AI 苏格拉底学习助手前端",
   "scripts": {
     "dev:h5": "uni",
     "build:h5": "uni build",
