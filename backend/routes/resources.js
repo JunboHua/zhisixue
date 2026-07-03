@@ -31,11 +31,11 @@ const upload = multer({
     fileSize: 50 * 1024 * 1024
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'text/plain'];
+    const allowedTypes = ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('不支持的文件类型'), false);
+      cb(new Error('仅支持 Word 文档（.doc / .docx）'), false);
     }
   }
 });
@@ -53,19 +53,15 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
       size: req.file.size
     });
 
-    const fileType = req.file.mimetype.includes('pdf') ? 'pdf' :
-                     req.file.mimetype.includes('word') ? 'word' :
-                     req.file.mimetype.includes('image') ? 'image' : 'text';
-
     const resource = await database.createResource({
       userId: req.user._id,
       title: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
-      type: fileType,
+      type: 'word',
       filePath: req.file.path,
       status: 'processing'
     });
 
-    const content = await extractTextFromFile(req.file.path, fileType);
+    const content = await extractWordText(req.file.path);
     console.log('提取的文件内容长度:', content.length);
     console.log('提取的文件内容前200字:', content.substring(0, 200));
     resource.content = content;
@@ -113,79 +109,47 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
   }
 });
 
-async function extractTextFromFile(filePath, type) {
+async function extractWordText(filePath) {
+  // 1. 先尝试 mammoth（支持 .docx）
   try {
-    if (type === 'text') {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      return content.substring(0, 5000);
-    }
+    const mammoth = require('mammoth');
+    const result = await mammoth.extractRawText({ path: filePath });
+    const text = result.value.trim();
+    if (text.length > 50) return text.substring(0, 10000);
+  } catch {}
 
-    if (type === 'image') {
-      return '[图片文件] 这张图片展示了学习内容，请根据图片中的文字或图表描述知识点。';
-    }
+  // 2. 尝试 officeparser（需要 LibreOffice）
+  try {
+    const officeparser = require('officeparser');
+    const text = await officeparser.parseOfficeAsync(filePath);
+    if (text && text.trim().length > 50) return text.trim().substring(0, 10000);
+  } catch {}
 
-    if (type === 'pdf') {
-      try {
-        const pdfParse = require('pdf-parse');
-        const dataBuffer = fs.readFileSync(filePath);
-        const data = await pdfParse(dataBuffer);
-        return data.text.substring(0, 5000);
-      } catch {
-        return '[PDF文件] 这是一份PDF学习资料，包含了重要的知识点内容。';
+  // 3. 二进制提取（适配旧版 .doc）
+  try {
+    const buf = fs.readFileSync(filePath);
+    let raw = '';
+    for (let i = 0; i < buf.length - 2; i++) {
+      const code = buf.readUInt16LE(i);
+      if ((code >= 0x4E00 && code <= 0x9FFF) ||
+          (code >= 0x3000 && code <= 0x303F) ||
+          (code >= 0xFF00 && code <= 0xFFEF) ||
+          (code >= 0x0020 && code <= 0x007E) ||
+          code === 0x000A || code === 0x000D) {
+        raw += String.fromCharCode(code);
+        i++;
       }
     }
+    const lines = raw.split(/[\r\n]+/);
+    const validLines = lines.filter(line => {
+      const chineseCount = (line.match(/[一-鿿]/g) || []).length;
+      return chineseCount >= 3 || (line.trim().length > 0 && chineseCount > 0);
+    });
+    const cleaned = validLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (cleaned.length > 80) return cleaned.substring(0, 10000);
+  } catch {}
 
-    if (type === 'word') {
-      // 先尝试 mammoth（支持 .docx）
-      try {
-        const mammoth = require('mammoth');
-        const result = await mammoth.extractRawText({ path: filePath });
-        const text = result.value.trim();
-        if (text.length > 50) return text.substring(0, 5000);
-      } catch {}
-
-      // mammoth 失败，尝试 officeparser（需要 LibreOffice）
-      try {
-        const officeparser = require('officeparser');
-        const text = await officeparser.parseOfficeAsync(filePath);
-        if (text && text.trim().length > 50) return text.trim().substring(0, 5000);
-      } catch {}
-
-      // 最后手段：读取二进制文件，提取可读的中文文本（适配旧版 .doc）
-      try {
-        const buf = fs.readFileSync(filePath);
-        let raw = '';
-        for (let i = 0; i < buf.length - 2; i++) {
-          const code = buf.readUInt16LE(i);
-          if ((code >= 0x4E00 && code <= 0x9FFF) ||  // 中日韩统一表意文字
-              (code >= 0x3000 && code <= 0x303F) ||  // CJK 标点
-              (code >= 0xFF00 && code <= 0xFFEF) ||  // 全角字符
-              (code >= 0x0020 && code <= 0x007E) ||  // ASCII 可打印
-              (code >= 0x2000 && code <= 0x206F) ||  // 常用标点
-              code === 0x000A || code === 0x000D) {  // 换行
-            raw += String.fromCharCode(code);
-            i++;
-          }
-        }
-        // 清洗：去掉明显的乱码段（连续的非中文字符）
-        const lines = raw.split(/[\r\n]+/);
-        const validLines = lines.filter(line => {
-          const chineseCount = (line.match(/[一-鿿]/g) || []).length;
-          return chineseCount >= 3 || (line.trim().length > 0 && chineseCount > 0);
-        });
-        const cleaned = validLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-        if (cleaned.length > 80) return cleaned.substring(0, 5000);
-      } catch {}
-
-      return '请将此 .doc 文件用 Word 打开，另存为 .docx 格式后重新上传。';
-    }
-
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return content.substring(0, 5000);
-  } catch (error) {
-    console.error('文件读取失败:', error);
-    return '这是一个学习资料示例。包含以下知识点：数学函数、物理力学、化学方程式等。';
-  }
+  return '无法解析此文档，请转换为 .docx 格式后重试。';
 }
 
 router.get('/list', authenticate, async (req, res) => {

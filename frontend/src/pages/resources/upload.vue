@@ -3,7 +3,7 @@
     <view class="upload-area" @click="chooseFile">
       <view class="upload-icon">📤</view>
       <text class="upload-title">点击上传学习资料</text>
-      <text class="upload-desc">支持 PDF、Word、图片、文本等格式</text>
+      <text class="upload-desc">仅支持 Word 文档（.doc / .docx）</text>
       <text class="upload-size">单个文件不超过 50MB</text>
     </view>
 
@@ -23,8 +23,8 @@
     <view class="tip-section">
       <text class="tip-title">💡 上传提示</text>
       <view class="tip-list">
-        <text class="tip-item">• 建议上传清晰的学习资料，便于AI解析</text>
-        <text class="tip-item">• 支持上传课本扫描件、课堂笔记、错题本等</text>
+        <text class="tip-item">• 上传 Word 文档（.doc 或 .docx 格式）</text>
+        <text class="tip-item">• 旧版 .doc 建议用 Word 另存为 .docx 以获得最佳解析效果</text>
         <text class="tip-item">• AI会自动提取知识点并构建知识框架</text>
       </view>
     </view>
