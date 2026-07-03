@@ -22,3 +22,4 @@ node/
 test_*.js
 frontend/android/app/src/main/assets/
 backend/uploads/
+.claude/settings.local.json

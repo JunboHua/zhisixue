@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(\"F:/桌面/zhisixue/node/node-v20.10.0-win-x64/node.exe\" node_modules/@dcloudio/vite-plugin-uni/bin/uni.js build)",
-      "Bash(\"F:/桌面/zhisixue/node/node-v20.10.0-win-x64/node.exe\" node_modules/@capacitor/cli/bin/capacitor sync)"
-    ]
-  }
-}
