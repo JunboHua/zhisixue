@@ -2,10 +2,7 @@
   <view class="container">
     <view class="header-info">
       <text class="knowledge-title">{{ currentKnowledgePoint }}</text>
-      <view class="progress-bar">
-        <view class="progress-fill" :style="{ width: progressPercent + '%' }"></view>
-      </view>
-      <text class="progress-text">第 {{ currentRound }} / {{ totalRounds }} 轮</text>
+      <text class="progress-text">{{ isCompleted ? '已完成' : '学习中' }}</text>
     </view>
 
     <view class="question-card" v-if="currentQuestion">
@@ -58,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { agentApi } from '@/utils/api'
 
 const currentKnowledgePoint = ref('')
@@ -69,14 +66,8 @@ const showHint = ref(false)
 const userAnswer = ref('')
 const isSubmitting = ref(false)
 const sessionId = ref('')
-const currentRound = ref(1)
-const totalRounds = ref(3)
 const isCompleted = ref(false)
 const showCompletion = ref(false)
-
-const progressPercent = computed(() => {
-  return Math.round((currentRound.value / totalRounds.value) * 100)
-})
 
 onMounted(() => {
   const pages = getCurrentPages()
@@ -123,7 +114,6 @@ async function submitAnswer() {
   if (isCompleted.value) { viewReport(); return }
 
   isSubmitting.value = true
-  currentRound.value++
 
   try {
     const res = await agentApi.chat({
@@ -179,21 +169,6 @@ function goBack() {
   color: #fff;
   display: block;
   margin-bottom: 20rpx;
-}
-
-.progress-bar {
-  height: 12rpx;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 6rpx;
-  overflow: hidden;
-  margin-bottom: 12rpx;
-}
-
-.progress-fill {
-  height: 100%;
-  background: #fff;
-  border-radius: 6rpx;
-  transition: width 0.3s ease;
 }
 
 .progress-text {
