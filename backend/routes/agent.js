@@ -27,7 +27,9 @@ router.post('/start', authenticate, async (req, res) => {
     res.json({
       message: 'Agent 学习会话已启动',
       sessionId: result.sessionId,
-      reply: result.reply
+      reply: result.reply,
+      hint: result.hint || '',
+      briefAnswer: result.briefAnswer || ''
     });
   } catch (error) {
     console.error('Agent启动失败:', error);
@@ -57,6 +59,8 @@ router.post('/chat', authenticate, async (req, res) => {
 
     res.json({
       reply: result.reply,
+      hint: result.hint || '',
+      briefAnswer: result.briefAnswer || '',
       isCompleted: result.isCompleted,
       sessionState: result.sessionState
     });

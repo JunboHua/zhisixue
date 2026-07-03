@@ -445,6 +445,8 @@ async function agentStart(userId, resourceId, knowledgePointId, knowledgePointTi
   return {
     sessionId: session._id,
     reply: result.reply,
+    hint: result.hint || '',
+    briefAnswer: result.briefAnswer || '',
     isCompleted: false
   };
 }
