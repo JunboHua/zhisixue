@@ -1,52 +1,75 @@
 <template>
   <view class="container">
-    <!-- 顶部知识点头 -->
-    <view class="chat-header">
+    <view class="header-info">
       <text class="knowledge-title">{{ currentKnowledgePoint }}</text>
-      <text class="session-status" v-if="isStreaming">● 思考中</text>
-      <text class="session-status done" v-else>✓ 就绪</text>
+      <view class="progress-bar">
+        <view class="progress-fill" :style="{ width: progressPercent + '%' }"></view>
+      </view>
+      <text class="progress-text">第 {{ currentRound }} / {{ totalRounds }} 轮</text>
     </view>
 
-    <!-- 消息列表 -->
-    <scroll-view class="msg-list" scroll-y :scroll-into-view="'msg-' + (messages.length - 1)" scroll-with-animation>
-      <view v-for="(msg, i) in messages" :key="i" :id="'msg-' + i"
-        :class="['msg-item', msg.role === 'user' ? 'msg-user' : 'msg-agent']"
-      >
-        <view class="msg-avatar">
-          <text>{{ msg.role === 'user' ? '👤' : '🤖' }}</text>
-        </view>
-        <view class="msg-bubble">
-          <text class="msg-text">{{ msg.content }}</text>
-          <text class="msg-cursor" v-if="msg.streaming">|</text>
-
-          <!-- 提示按钮 -->
-          <view class="hint-btn" v-if="msg.role === 'agent' && msg.hint && !msg.streaming" @click="showHint = !showHint">
-            <text>💡 {{ showHint ? '收起提示' : '查看提示' }}</text>
-          </view>
-          <view class="hint-content" v-if="showHint && msg.hint">
-            <text>{{ msg.hint }}</text>
-          </view>
-        </view>
+    <view class="question-card" v-if="currentQuestion">
+      <view class="question-header">
+        <text class="question-label">🤔 苏格拉底提问</text>
       </view>
-    </scroll-view>
+      <text class="question-content">{{ currentQuestion }}</text>
 
-    <!-- 输入框 -->
-    <view class="input-area">
-      <textarea class="chat-input" v-model="userInput" placeholder="输入你的思考..."
-        :disabled="isStreaming" :maxlength="1000" confirm-type="send"
-        @confirm="sendMessage"
-      />
-      <view class="send-btn" :class="{ disabled: !userInput.trim() || isStreaming }" @click="sendMessage">
-        <text>发送</text>
+      <view class="hint-section" v-if="currentHint || currentBriefAnswer">
+        <view class="hint-toggle" @click="toggleHint">
+          <text class="hint-icon">{{ showHint ? '🙈' : '💡' }}</text>
+          <text class="hint-text">{{ showHint ? '收起提示' : '需要提示？点击查看' }}</text>
+        </view>
+        <view class="hint-content" v-if="showHint && currentHint">
+          <text class="hint-label">💡 解题思路提示：</text>
+          <text class="hint-value">{{ currentHint }}</text>
+        </view>
+        <view class="hint-content brief-answer" v-if="showHint && currentBriefAnswer">
+          <text class="hint-label">📝 简要答案（供核对）：</text>
+          <text class="hint-value">{{ currentBriefAnswer }}</text>
+        </view>
       </view>
     </view>
 
-    <!-- 完成弹窗 -->
+    <view class="answer-section">
+      <textarea 
+        class="answer-input" 
+        v-model="userAnswer" 
+        placeholder="请输入你的思考和答案..."
+        :disabled="isSubmitting"
+      ></textarea>
+      <view class="char-count">{{ userAnswer.length }} / 1000</view>
+    </view>
+
+    <view class="analysis-card" v-if="lastAnalysis">
+      <view class="analysis-header">
+        <text class="analysis-label">💡 分析结果</text>
+        <text class="analysis-status" :class="getCorrectnessClass(lastAnalysis.correctness)">
+          {{ getCorrectnessLabel(lastAnalysis.correctness) }}
+        </text>
+      </view>
+      <text class="analysis-content">{{ lastAnalysis.explanation }}</text>
+    </view>
+
+    <view class="btn btn-primary btn-block" :class="{ loading: isSubmitting }" @click="submitAnswer">
+      <text v-if="isSubmitting">思考中...</text>
+      <text v-else>{{ isCompleted ? '查看报告' : '提交答案' }}</text>
+    </view>
+
     <view class="completion-modal" v-if="showCompletion">
       <view class="modal-content">
         <view class="modal-icon">🎉</view>
         <text class="modal-title">学习完成！</text>
-        <text class="modal-desc">恭喜完成「{{ currentKnowledgePoint }}」</text>
+        <text class="modal-desc">恭喜你完成了「{{ currentKnowledgePoint }}」的学习</text>
+        <view class="modal-stats">
+          <view class="stat-item">
+            <text class="stat-value">{{ correctCount }}</text>
+            <text class="stat-label">正确次数</text>
+          </view>
+          <view class="stat-item">
+            <text class="stat-value">{{ totalAnswers }}</text>
+            <text class="stat-label">总回答次数</text>
+          </view>
+        </view>
         <view class="btn btn-primary btn-block" @click="viewReport">查看学习报告</view>
         <view class="btn btn-secondary btn-block mt-md" @click="goBack">返回首页</view>
       </view>
@@ -55,140 +78,147 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { agentApi } from '@/utils/api'
-
-interface Message {
-  role: 'user' | 'agent'
-  content: string
-  streaming?: boolean
-  hint?: string
-}
+import { ref, computed, onMounted } from 'vue'
+import { learningApi } from '@/utils/api'
 
 const currentKnowledgePoint = ref('')
-const messages = ref<Message[]>([])
-const userInput = ref('')
-const isStreaming = ref(false)
+const currentQuestion = ref('')
+const currentHint = ref('')
+const currentBriefAnswer = ref('')
 const showHint = ref(false)
+const userAnswer = ref('')
+const isSubmitting = ref(false)
+const lastAnalysis = ref<any>(null)
 const sessionId = ref('')
+const currentRound = ref(1)
+const totalRounds = ref(3)
+const correctCount = ref(0)
+const totalAnswers = ref(0)
+const isCompleted = ref(false)
 const showCompletion = ref(false)
 
-// 初始化：读参数，启动 Agent
-const pages = getCurrentPages()
-const currentPage = pages[pages.length - 1] as any
-const options = currentPage.$page?.options || currentPage.options || {}
+const progressPercent = computed(() => {
+  return Math.round((currentRound.value / totalRounds.value) * 100)
+})
 
-const resourceId = options.resourceId
-const pointId = options.pointId
-const pointTitle = decodeURIComponent(options.pointTitle || '知识点')
-
-if (resourceId && pointId && pointTitle) {
-  currentKnowledgePoint.value = pointTitle
-  initSession(resourceId, pointId, pointTitle)
-}
-
-async function initSession(resourceId: string, pointId: string, pointTitle: string) {
-  isStreaming.value = true
-  try {
-    const res = await agentApi.start({ resourceId, knowledgePointId: pointId, knowledgePointTitle: pointTitle })
-    sessionId.value = res.sessionId || ''
-
-    // 用流式效果展示首条回复
-    const msg: Message = { role: 'agent', content: '', streaming: true, hint: '' }
-    messages.value.push(msg)
-    await typewriterEffect(msg, res.reply || '请开始思考...')
-    msg.streaming = false
-
-    // 从回复中提取 hint（如果存在）
-    // （简化处理：Agent start 不含 hint，后续 chat 含）
-  } catch (e: any) {
-    messages.value.push({ role: 'agent', content: '启动失败：' + (e.message || '请重试') })
-  } finally {
-    isStreaming.value = false
-  }
-}
-
-async function sendMessage() {
-  const text = userInput.value.trim()
-  if (!text || isStreaming.value) return
-
-  userInput.value = ''
-  messages.value.push({ role: 'user', content: text })
-
-  isStreaming.value = true
-  const agentMsg: Message = { role: 'agent', content: '', streaming: true }
-  messages.value.push(agentMsg)
-
-  if (sessionId.value) {
-    // 优先使用流式
-    try {
-      agentApi.streamChat(
-        sessionId.value,
-        text,
-        (token: string) => {
-          agentMsg.content += token
-        },
-        (completed: boolean) => {
-          agentMsg.streaming = false
-          isStreaming.value = false
-          if (completed) {
-            setTimeout(() => { showCompletion.value = true }, 1500)
-          }
-        },
-        (err: string) => {
-          // 流式失败，回退到普通接口
-          fallbackChat(agentMsg)
-        }
-      )
-    } catch {
-      fallbackChat(agentMsg)
-    }
+onMounted(() => {
+  const pages = getCurrentPages()
+  const currentPage = pages[pages.length - 1] as any
+  const options = currentPage.$page?.options || currentPage.options || {}
+  
+  const resourceId = options.resourceId
+  const pointId = options.pointId
+  const pointTitle = decodeURIComponent(options.pointTitle || '')
+  
+  if (resourceId && pointId && pointTitle) {
+    currentKnowledgePoint.value = pointTitle
+    startSession(resourceId, pointId, pointTitle)
   } else {
-    // 无 sessionId，回退
-    agentMsg.content = '会话未初始化，请返回重新开始'
-    agentMsg.streaming = false
-    isStreaming.value = false
+    uni.showToast({ title: '参数错误', icon: 'none' })
   }
-}
+})
 
-async function fallbackChat(agentMsg: Message) {
+async function startSession(resourceId: string, pointId: string, pointTitle: string) {
+  isSubmitting.value = true
+  
   try {
-    const res = await agentApi.chat({ sessionId: sessionId.value, message: agentMsg.content || '继续' })
-    agentMsg.content = res.reply || '请继续思考...'
-    if (res.isCompleted) {
-      setTimeout(() => { showCompletion.value = true }, 1500)
-    }
-  } catch (e: any) {
-    agentMsg.content = '回复失败：' + (e.message || '网络错误')
+    const res = await learningApi.start({
+      resourceId,
+      knowledgePointId: pointId,
+      knowledgePointTitle: pointTitle
+    })
+    
+    sessionId.value = res.sessionId || ''
+    currentQuestion.value = res.question || '请开始思考这个问题...'
+    currentHint.value = res.hint || ''
+    currentBriefAnswer.value = res.briefAnswer || ''
+    showHint.value = false
+  } catch (error: any) {
+    uni.showToast({ title: error.message || '启动会话失败', icon: 'none' })
   } finally {
-    agentMsg.streaming = false
-    isStreaming.value = false
+    isSubmitting.value = false
   }
 }
 
-// 打字机效果
-function typewriterEffect(msg: Message, text: string, speed = 30): Promise<void> {
-  return new Promise(resolve => {
-    let i = 0
-    const timer = setInterval(() => {
-      if (i >= text.length) {
-        clearInterval(timer)
-        resolve()
-        return
-      }
-      // 标点后多停一下
-      const char = text[i]
-      msg.content += char
-      i++
-      if ('。！？；\n'.includes(char)) {
-        // 已处理，继续
-      }
-    }, speed)
-  })
+async function submitAnswer() {
+  if (!userAnswer.value.trim()) {
+    uni.showToast({ title: '请输入你的答案', icon: 'none' })
+    return
+  }
+
+  if (isCompleted.value) {
+    viewReport()
+    return
+  }
+
+  isSubmitting.value = true
+  totalAnswers.value++
+  
+  try {
+    const res = await learningApi.answer({
+      sessionId: sessionId.value,
+      userAnswer: userAnswer.value.trim()
+    })
+
+    lastAnalysis.value = res.analysis
+    
+    if (res.analysis?.correctness === '正确') {
+      correctCount.value++
+    }
+
+    if (res.isCompleted) {
+      isCompleted.value = true
+      currentQuestion.value = '学习已完成！'
+      currentHint.value = ''
+      currentBriefAnswer.value = ''
+      setTimeout(() => {
+        showCompletion.value = true
+      }, 1000)
+    } else {
+      currentQuestion.value = res.nextQuestion || '请继续思考...'
+      currentHint.value = res.hint || ''
+      currentBriefAnswer.value = res.briefAnswer || ''
+      showHint.value = false
+      currentRound.value++
+    }
+    
+    userAnswer.value = ''
+  } catch (error: any) {
+    uni.showToast({ title: error.message || '提交失败', icon: 'none' })
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+function toggleHint() {
+  showHint.value = !showHint.value
+}
+
+function getCorrectnessLabel(correctness: string) {
+  const labels: Record<string, string> = {
+    correct: '回答正确 ✓',
+    '正确': '回答正确 ✓',
+    partial: '部分正确',
+    '部分正确': '部分正确',
+    wrong: '需要继续思考',
+    '错误': '需要继续思考'
+  }
+  return labels[correctness] || correctness
+}
+
+function getCorrectnessClass(correctness: string) {
+  const classMap: Record<string, string> = {
+    '正确': 'correct',
+    '部分正确': 'partial',
+    '错误': 'wrong'
+  }
+  return classMap[correctness] || ''
 }
 
 function viewReport() {
-  uni.navigateTo({ url: `/pages/learning/report?sessionId=${sessionId.value}` })
+  uni.navigateTo({ 
+    url: `/pages/learning/report?sessionId=${sessionId.value}` 
+  })
 }
 
 function goBack() {
@@ -198,149 +228,231 @@ function goBack() {
 
 <style lang="scss">
 .container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: $bg-secondary;
+  padding: 24rpx;
+  padding-bottom: 160rpx;
 }
 
-.chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20rpx 24rpx;
+.header-info {
   background: linear-gradient(135deg, $primary-color, #7C3AED);
+  padding: 32rpx;
+  border-radius: $radius-lg;
+  margin-bottom: 24rpx;
 }
 
 .knowledge-title {
-  font-size: 28rpx;
-  color: #fff;
-  font-weight: bold;
-}
-
-.session-status {
-  font-size: 22rpx;
-  color: rgba(255,255,255,0.7);
-  &.done { color: #A7F3D0; }
-}
-
-.msg-list {
-  flex: 1;
-  padding: 20rpx 16rpx;
-  overflow-y: auto;
-}
-
-.msg-item {
-  display: flex;
-  margin-bottom: 24rpx;
-
-  &.msg-user {
-    flex-direction: row-reverse;
-    .msg-avatar { margin-left: 12rpx; margin-right: 0; }
-    .msg-bubble {
-      background: $primary-color;
-      color: #fff;
-      border-radius: 20rpx 4rpx 20rpx 20rpx;
-    }
-  }
-}
-
-.msg-avatar {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 50%;
-  background: $bg-primary;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: 32rpx;
-  flex-shrink: 0;
-  margin-right: 12rpx;
+  font-weight: bold;
+  color: #fff;
+  display: block;
+  margin-bottom: 20rpx;
 }
 
-.msg-bubble {
-  max-width: 75%;
-  padding: 20rpx 24rpx;
+.progress-bar {
+  height: 12rpx;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 6rpx;
+  overflow: hidden;
+  margin-bottom: 12rpx;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #fff;
+  border-radius: 6rpx;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.question-card {
   background: $bg-primary;
-  border-radius: 4rpx 20rpx 20rpx 20rpx;
+  padding: 32rpx;
+  border-radius: $radius-lg;
+  margin-bottom: 24rpx;
   box-shadow: $shadow-sm;
 }
 
-.msg-text {
-  font-size: 28rpx;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-all;
+.question-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16rpx;
 }
 
-.msg-cursor {
-  animation: blink 0.8s infinite;
-  color: $primary-color;
-  font-weight: bold;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.hint-btn {
-  margin-top: 16rpx;
-  padding: 12rpx 16rpx;
-  background: #FEF3C7;
-  border-radius: $radius-md;
-  font-size: 24rpx;
-  color: #92400E;
-}
-
-.hint-content {
-  margin-top: 12rpx;
-  padding: 16rpx;
-  background: #FFFBEB;
-  border-radius: $radius-md;
+.question-label {
   font-size: 26rpx;
-  line-height: 1.6;
+  color: $primary-color;
+  font-weight: 500;
 }
 
-.input-area {
+.question-content {
+  font-size: 32rpx;
+  color: $text-primary;
+  line-height: 1.8;
+}
+
+.hint-section {
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 2rpx dashed $border-color;
+}
+
+.hint-toggle {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  padding: 16rpx 20rpx;
-  padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
+  padding: 16rpx 24rpx;
+  background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+  border-radius: $radius-md;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.hint-icon {
+  font-size: 32rpx;
+}
+
+.hint-text {
+  font-size: 26rpx;
+  color: #92400E;
+  font-weight: 500;
+}
+
+.hint-content {
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: #FFFBEB;
+  border-radius: $radius-md;
+  border: 2rpx solid #FDE68A;
+  
+  &.brief-answer {
+    margin-top: 16rpx;
+    background: #ECFDF5;
+    border-color: #A7F3D0;
+  }
+}
+
+.hint-label {
+  display: block;
+  font-size: 24rpx;
+  color: $text-secondary;
+  margin-bottom: 12rpx;
+  font-weight: 500;
+}
+
+.hint-value {
+  font-size: 28rpx;
+  color: $text-primary;
+  line-height: 1.7;
+}
+
+.answer-section {
   background: $bg-primary;
-  border-top: 1rpx solid $border-color;
+  padding: 24rpx;
+  border-radius: $radius-lg;
+  margin-bottom: 24rpx;
+  box-shadow: $shadow-sm;
 }
 
-.chat-input {
-  flex: 1;
-  height: 72rpx;
-  padding: 12rpx 20rpx;
+.answer-input {
+  width: 100%;
+  height: 240rpx;
+  padding: 20rpx;
   border: 2rpx solid $border-color;
-  border-radius: 36rpx;
+  border-radius: $radius-md;
   font-size: 28rpx;
-  background: $bg-secondary;
+  line-height: 1.6;
+  box-sizing: border-box;
+  
+  &:focus {
+    border-color: $primary-color;
+  }
 }
 
-.send-btn {
-  padding: 14rpx 28rpx;
-  background: $primary-color;
-  color: #fff;
-  border-radius: 36rpx;
-  font-size: 28rpx;
+.char-count {
+  text-align: right;
+  font-size: 24rpx;
+  color: $text-muted;
+  margin-top: 12rpx;
+}
 
-  &.disabled {
-    opacity: 0.4;
+.analysis-card {
+  background: $bg-primary;
+  padding: 24rpx;
+  border-radius: $radius-lg;
+  margin-bottom: 24rpx;
+  box-shadow: $shadow-sm;
+  border-left: 6rpx solid $primary-color;
+}
+
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.analysis-label {
+  font-size: 26rpx;
+  color: $primary-color;
+  font-weight: 500;
+}
+
+.analysis-status {
+  font-size: 24rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 16rpx;
+  
+  &.correct {
+    background: #D1FAE5;
+    color: $success-color;
+  }
+  
+  &.partial {
+    background: #FEF3C7;
+    color: $warning-color;
+  }
+  
+  &.wrong {
+    background: #FEE2E2;
+    color: $error-color;
+  }
+}
+
+.analysis-content {
+  font-size: 28rpx;
+  color: $text-secondary;
+  line-height: 1.6;
+}
+
+.btn {
+  position: fixed;
+  bottom: 24rpx;
+  left: 24rpx;
+  right: 24rpx;
+  
+  &.loading {
+    opacity: 0.7;
   }
 }
 
 .completion-modal {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 32rpx;
   z-index: 100;
 }
 
@@ -348,23 +460,51 @@ function goBack() {
   background: $bg-primary;
   border-radius: $radius-lg;
   padding: 48rpx 32rpx;
-  width: 80%;
+  width: 100%;
   max-width: 560rpx;
   text-align: center;
 }
 
-.modal-icon { font-size: 100rpx; margin-bottom: 20rpx; }
-.modal-title { font-size: 36rpx; font-weight: bold; display: block; margin-bottom: 12rpx; }
-.modal-desc { font-size: 26rpx; color: $text-secondary; display: block; margin-bottom: 32rpx; }
-
-.btn {
-  padding: 20rpx;
-  border-radius: $radius-md;
-  font-size: 30rpx;
-  &.btn-primary { background: $primary-color; color: #fff; }
-  &.btn-secondary { background: $bg-secondary; color: $primary-color; }
-  &.btn-block { width: 100%; display: block; }
+.modal-icon {
+  font-size: 100rpx;
+  margin-bottom: 20rpx;
 }
 
-.mt-md { margin-top: 20rpx; }
+.modal-title {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: $text-primary;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.modal-desc {
+  font-size: 26rpx;
+  color: $text-secondary;
+  display: block;
+  margin-bottom: 32rpx;
+}
+
+.modal-stats {
+  display: flex;
+  justify-content: center;
+  gap: 60rpx;
+  margin-bottom: 32rpx;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: $primary-color;
+  display: block;
+}
+
+.stat-label {
+  font-size: 24rpx;
+  color: $text-muted;
+}
 </style>
