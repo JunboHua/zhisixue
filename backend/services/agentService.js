@@ -424,8 +424,8 @@ async function agentChat(userId, sessionId, userMessage, learningContext = {}) {
 
         // 收集 hint 和 briefAnswer
         if (toolResult.success && toolResult.data) {
-          if (toolResult.data.hint && !latestHint) latestHint = toolResult.data.hint;
-          if (toolResult.data.briefAnswer && !latestBriefAnswer) latestBriefAnswer = toolResult.data.briefAnswer;
+          if (toolResult.data.hint) latestHint = toolResult.data.hint;
+          if (toolResult.data.briefAnswer) latestBriefAnswer = toolResult.data.briefAnswer;
         }
 
         // 检测是否调用了 complete_session
