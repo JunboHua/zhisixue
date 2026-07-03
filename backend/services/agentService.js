@@ -439,4 +439,34 @@ async function agentStart(userId, resourceId, knowledgePointId, knowledgePointTi
   };
 }
 
-module.exports = { agentChat, agentStart };
+/**
+ * 流式版 Agent 对话 — Agent Loop 不变，最终回复以 SSE 逐字发送
+ * 返回 async generator: yield { type: 'token', text: '字' } | { type: 'done', isCompleted }
+ */
+async function* agentChatStream(userId, sessionId, userMessage, learningContext = {}) {
+  // 先走非流式 Agent Loop 获取完整回复
+  const result = await agentChat(userId, sessionId, userMessage, learningContext);
+  const fullText = result.reply;
+  const isCompleted = result.isCompleted;
+
+  // 逐字流式输出
+  for (let i = 0; i < fullText.length; i++) {
+    yield { type: 'token', text: fullText[i] };
+    // 模拟流式间隔（标点后稍长停顿）
+    const char = fullText[i];
+    if ('。！？；\n！？'.includes(char)) {
+      await sleep(80);
+    } else if ('，、：'.includes(char)) {
+      await sleep(40);
+    } else {
+      await sleep(15);
+    }
+  }
+  yield { type: 'done', isCompleted };
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+module.exports = { agentChat, agentStart, agentChatStream };

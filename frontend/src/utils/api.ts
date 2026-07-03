@@ -164,11 +164,72 @@ export const aiApi = {
 export const learningApi = {
   start: (data: { resourceId: string; knowledgePointId: string; knowledgePointTitle: string }) =>
     request('/learning/start', 'POST', data),
-  
+
   answer: (data: { sessionId: string; userAnswer: string }) =>
     request('/learning/answer', 'POST', data),
-  
+
   sessions: () => request('/learning/sessions', 'GET'),
-  
+
   session: (id: string) => request(`/learning/session/${id}`, 'GET')
+}
+
+// Agent API（含流式支持）
+export const agentApi = {
+  start: (data: { resourceId: string; knowledgePointId: string; knowledgePointTitle: string }) =>
+    request('/agent/start', 'POST', data),
+
+  chat: (data: { sessionId: string; message: string }) =>
+    request('/agent/chat', 'POST', data),
+
+  // 流式对话 — 返回 AbortController 用于取消
+  streamChat: (
+    sessionId: string,
+    message: string,
+    onToken: (text: string) => void,
+    onDone: (isCompleted: boolean) => void,
+    onError: (err: string) => void
+  ) => {
+    const controller = new AbortController()
+    const userStore = useUserStore()
+    const url = `${BASE_URL}/agent/stream?sessionId=${sessionId}&message=${encodeURIComponent(message)}`
+
+    fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${userStore.token}`,
+        'ngrok-skip-browser-warning': 'true'
+      },
+      signal: controller.signal
+    }).then(async response => {
+      if (!response.ok) throw new Error('HTTP ' + response.status)
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('不支持流式读取')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.token) onToken(data.token)
+              if (data.done) onDone(data.isCompleted || false)
+              if (data.error) onError(data.error)
+            } catch {}
+          }
+        }
+      }
+    }).catch(err => {
+      if (err.name !== 'AbortError') onError(err.message)
+    })
+
+    return controller  // 返回用于取消请求
+  }
 }

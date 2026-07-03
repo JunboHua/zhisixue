@@ -1,6 +1,6 @@
 const express = require('express');
 const authenticate = require('../middleware/auth');
-const { agentChat, agentStart } = require('../services/agentService');
+const { agentChat, agentStart, agentChatStream } = require('../services/agentService');
 
 const router = express.Router();
 
@@ -63,6 +63,56 @@ router.post('/chat', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Agent对话失败:', error);
     res.status(500).json({ message: 'Agent对话失败', error: error.message });
+  }
+});
+
+/**
+ * GET /api/agent/stream
+ * SSE 流式 Agent 对话 — 逐字推送
+ * Query: sessionId, message
+ */
+router.get('/stream', authenticate, async (req, res) => {
+  try {
+    const { sessionId, message } = req.query;
+
+    if (!sessionId || !message) {
+      return res.status(400).json({ message: '请提供 sessionId 和 message' });
+    }
+
+    // 设置 SSE 响应头
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    const stream = agentChatStream(
+      req.user._id,
+      sessionId,
+      decodeURIComponent(message),
+      {}
+    );
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'token') {
+        res.write(`data: ${JSON.stringify({ token: chunk.text })}\n\n`);
+      } else if (chunk.type === 'done') {
+        res.write(`data: ${JSON.stringify({ done: true, isCompleted: chunk.isCompleted })}\n\n`);
+        res.end();
+        return;
+      }
+    }
+
+    res.end();
+  } catch (error) {
+    console.error('Agent流式对话失败:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Agent流式对话失败', error: error.message });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.end();
+    }
   }
 });
 
