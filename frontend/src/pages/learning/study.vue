@@ -13,6 +13,21 @@
         <text class="question-label">🤔 苏格拉底提问</text>
       </view>
       <text class="question-content">{{ currentQuestion }}</text>
+
+      <view class="hint-section" v-if="currentHint || currentBriefAnswer">
+        <view class="hint-toggle" @click="showHint = !showHint">
+          <text class="hint-icon">{{ showHint ? '🙈' : '💡' }}</text>
+          <text class="hint-text">{{ showHint ? '收起提示' : '需要提示？点击查看' }}</text>
+        </view>
+        <view class="hint-content" v-if="showHint && currentHint">
+          <text class="hint-label">💡 解题思路提示：</text>
+          <text class="hint-value">{{ currentHint }}</text>
+        </view>
+        <view class="hint-content brief-answer" v-if="showHint && currentBriefAnswer">
+          <text class="hint-label">📝 简要答案（供核对）：</text>
+          <text class="hint-value">{{ currentBriefAnswer }}</text>
+        </view>
+      </view>
     </view>
 
     <view class="answer-section">
@@ -48,6 +63,9 @@ import { agentApi } from '@/utils/api'
 
 const currentKnowledgePoint = ref('')
 const currentQuestion = ref('')
+const currentHint = ref('')
+const currentBriefAnswer = ref('')
+const showHint = ref(false)
 const userAnswer = ref('')
 const isSubmitting = ref(false)
 const sessionId = ref('')
@@ -87,6 +105,9 @@ async function startSession(resourceId: string, pointId: string, pointTitle: str
     })
     sessionId.value = res.sessionId || ''
     currentQuestion.value = res.reply || '请开始思考...'
+    currentHint.value = res.hint || ''
+    currentBriefAnswer.value = res.briefAnswer || ''
+    showHint.value = false
   } catch (error: any) {
     uni.showToast({ title: error.message || '启动失败', icon: 'none' })
   } finally {
@@ -114,9 +135,14 @@ async function submitAnswer() {
     if (res.isCompleted) {
       isCompleted.value = true
       currentQuestion.value = '学习已完成！'
+      currentHint.value = ''
+      currentBriefAnswer.value = ''
       setTimeout(() => { showCompletion.value = true }, 1000)
     } else {
       currentQuestion.value = res.reply || '请继续思考...'
+      currentHint.value = res.hint || ''
+      currentBriefAnswer.value = res.briefAnswer || ''
+      showHint.value = false
     }
   } catch (error: any) {
     uni.showToast({ title: error.message || '提交失败', icon: 'none' })
@@ -264,4 +290,50 @@ function goBack() {
 .modal-desc { font-size: 26rpx; color: $text-secondary; display: block; margin-bottom: 32rpx; }
 
 .mt-md { margin-top: 20rpx; }
+
+.hint-section {
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 2rpx dashed $border-color;
+}
+
+.hint-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 24rpx;
+  background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+  border-radius: $radius-md;
+  &:active { transform: scale(0.98); }
+}
+
+.hint-icon { font-size: 32rpx; }
+.hint-text { font-size: 26rpx; color: #92400E; font-weight: 500; }
+
+.hint-content {
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: #FFFBEB;
+  border-radius: $radius-md;
+  border: 2rpx solid #FDE68A;
+  &.brief-answer {
+    margin-top: 16rpx;
+    background: #ECFDF5;
+    border-color: #A7F3D0;
+  }
+}
+
+.hint-label {
+  display: block;
+  font-size: 24rpx;
+  color: $text-secondary;
+  margin-bottom: 12rpx;
+  font-weight: 500;
+}
+
+.hint-value {
+  font-size: 28rpx;
+  color: $text-primary;
+  line-height: 1.7;
+}
 </style>

@@ -305,6 +305,8 @@ async function agentChat(userId, sessionId, userMessage, learningContext = {}) {
   // 3. Agent 自主循环
   let loopCount = 0;
   let isCompleted = false;
+  let latestHint = '';
+  let latestBriefAnswer = '';
 
   while (loopCount < MAX_LOOP_ITERATIONS) {
     loopCount++;
@@ -329,6 +331,12 @@ async function agentChat(userId, sessionId, userMessage, learningContext = {}) {
 
         // 执行工具
         const toolResult = await executeTool(toolName, toolArgs, { userId, sessionId });
+
+        // 收集 hint 和 briefAnswer
+        if (toolResult.success && toolResult.data) {
+          if (toolResult.data.hint && !latestHint) latestHint = toolResult.data.hint;
+          if (toolResult.data.briefAnswer && !latestBriefAnswer) latestBriefAnswer = toolResult.data.briefAnswer;
+        }
 
         // 检测是否调用了 complete_session
         if (toolName === 'complete_session' && toolResult.success) {
@@ -356,6 +364,8 @@ async function agentChat(userId, sessionId, userMessage, learningContext = {}) {
 
     return {
       reply: assistantMsg.content || '请继续思考...',
+      hint: latestHint || '',
+      briefAnswer: latestBriefAnswer || '',
       isCompleted,
       sessionState: {
         loopCount,
