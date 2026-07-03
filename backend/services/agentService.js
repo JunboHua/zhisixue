@@ -101,7 +101,59 @@ function extractKnowledgePoint(messages) {
 /**
  * 对 DeepSeek API 发起 LLM 调用（支持 function calling）
  */
+// 验证并修复消息格式，确保 tool_calls/tool 正确配对
+function sanitizeMessages(messages) {
+  const cleaned = [];
+  let pendingToolCallIds = new Set();
+
+  for (const m of messages) {
+    if (m.role === 'assistant' && m.tool_calls) {
+      for (const tc of m.tool_calls) {
+        pendingToolCallIds.add(tc.id);
+      }
+      cleaned.push(m);
+    } else if (m.role === 'tool') {
+      if (pendingToolCallIds.has(m.tool_call_id)) {
+        pendingToolCallIds.delete(m.tool_call_id);
+        cleaned.push(m);
+      }
+      // 没有对应 tool_calls 的 tool 消息 → 丢弃
+    } else {
+      // 如果有待配对的 tool_calls 但遇到了新 user/assistant 消息，
+      // 移除前面未配对的 assistant tool_calls 消息
+      if (pendingToolCallIds.size > 0 && (m.role === 'user' || m.role === 'system')) {
+        // 回退：移除上一条未配对完成的 assistant tool_calls 消息
+        while (cleaned.length > 0) {
+          const last = cleaned[cleaned.length - 1];
+          if (last.role === 'assistant' && last.tool_calls) {
+            cleaned.pop();
+            break;
+          }
+          cleaned.pop();
+        }
+        pendingToolCallIds.clear();
+      }
+      cleaned.push(m);
+    }
+  }
+
+  // 末尾如果有未配对完成的 assistant tool_calls，移除它
+  while (cleaned.length > 0) {
+    const last = cleaned[cleaned.length - 1];
+    if (last.role === 'assistant' && last.tool_calls && pendingToolCallIds.size > 0) {
+      cleaned.pop();
+    } else {
+      break;
+    }
+  }
+
+  return cleaned;
+}
+
 async function callLLM(messages) {
+  // 发送前验证并修复消息
+  messages = sanitizeMessages(messages);
+
   // Mock 模式：直接返回模拟响应
   if (useMock) {
     console.log('[Agent] Mock模式：不调用真实API');
@@ -222,9 +274,14 @@ async function callLLM(messages) {
     // 其他API错误（400, 500等）→ 尝试不带tools的重试
     if (status === 400 || status === 500) {
       try {
+        // 清理所有 tool 相关的历史消息，纯文本重试
+        const cleanMessages = messages
+          .filter(m => m.role === 'system' || m.role === 'user' || (m.role === 'assistant' && !m.tool_calls))
+          .map(m => ({ role: m.role, content: m.content }));
+        console.log('[Agent] 降级为纯文本模式重试（移除所有 tool 消息）');
         const fallbackResponse = await axios.post(
           apiUrl,
-          { model, messages, temperature: 0.7, max_tokens: 2000 },
+          { model, messages: cleanMessages, temperature: 0.9, max_tokens: 2000 },
           { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 60000 }
         );
         return fallbackResponse.data.choices[0].message;
